@@ -7,12 +7,12 @@
  * worker msg body
  */
 typedef enum {
-  WORKER_MSG_TERMINATE = 1,
-  WORKER_MSG_WAKEUP,
-  WORKER_MSG_ASSIGN,
-  WORKER_MSG_SPMDREQ,
-  WORKER_MSG_REQUEST,
-  WORKER_MSG_TASKMIG,
+  MSG_TERMINATE = 1,
+  MSG_TASKASSIGN,
+  MSG_TASKRET,		// task return by worker
+  MSG_TASKREQ,
+  MSG_TASKWAKEUP,		//sent to both master and wrapper
+  MSG_UPDATEPRIOR,	//sent to master only
 } workermsg_type_t;
 
 typedef struct {

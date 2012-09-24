@@ -15,19 +15,18 @@ liblpel_la_SOURCES = \
 	src/arch/mctx-ucontext.h \
 	src/mailbox.c \
 	src/mailbox.h \
-	src/buffer.c \
+	src/configuration.h \
 	src/buffer.h \
-	src/scheduler.c \
-	src/scheduler.h \
-        src/spmdext.c \
-        src/spmdext.h \
+	src/buffer/bounded.c \
+	src/buffer/unbounded.c \
 	src/stream.c \
 	src/stream.h \
 	src/streamset.c \
 	src/task.c \
 	src/task.h \
-	src/taskqueue.c \
 	src/taskqueue.h \
+	src/queues/fifo.c \
+	src/queues/priority.c \
 	src/timing.c \
 	src/lpelcfg.c \
 	src/lpelcfg.h \

@@ -37,6 +37,7 @@
  */
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <pthread.h>
@@ -50,6 +51,7 @@
 
 #include "stream.h"
 #include "lpel/monitor.h"
+#include "configuration.h"
 
 /** Macros for lock handling */
 
@@ -202,6 +204,10 @@ lpel_stream_desc_t *LpelStreamOpen( lpel_stream_t *s, char mode)
     case 'w': s->prod_sd = sd; break;
   }
 
+#ifdef _USE_DYNAMIC_PRIORITY_
+  LpelTaskAddStream(ct, sd, mode);
+#endif
+
   return sd;
 }
 
@@ -218,6 +224,16 @@ void LpelStreamClose( lpel_stream_desc_t *sd, int destroy_s)
   if (sd->mon && MON_CB(stream_close)) {
     MON_CB(stream_close)(sd->mon);
   }
+#endif
+
+#ifdef _USE_DYNAMIC_PRIORITY_
+  PRODLOCK_LOCK( &sd->stream->prod_lock);
+  	if (sd->mode == 'r')
+  		sd->stream->cons_sd = NULL;
+    else if (sd->mode == 'w')
+  		sd->stream->prod_sd = NULL;
+  PRODLOCK_UNLOCK( &sd->stream->prod_lock);
+  LpelTaskRemoveStream(sd->task, sd, sd->mode);
 #endif
 
   if (destroy_s) {
@@ -296,7 +312,6 @@ void *LpelStreamRead( lpel_stream_desc_t *sd)
 {
   void *item;
   lpel_task_t *self = sd->task;
-
   assert( sd->mode == 'r');
 
   /* MONITORING CALLBACK */
@@ -327,22 +342,29 @@ void *LpelStreamRead( lpel_stream_desc_t *sd)
   /* pop off the top element */
   LpelBufferPop( &sd->stream->buffer);
 
-
+#ifdef _USE_BOUNDED_BUFFER_
   /* quasi V(e_sem) */
   if ( fetch_and_inc( &sd->stream->e_sem) < 0) {
     /* e_sem was -1 */
     lpel_task_t *prod = sd->stream->prod_sd->task;
     /* wakeup producer: make ready */
-    LpelTaskUnblock( self, prod);
+    LpelTaskUnblock(prod);
 
     /* MONITORING CALLBACK */
 #ifdef USE_TASK_EVENT_LOGGING
     if (sd->mon && MON_CB(stream_wakeup)) {
       MON_CB(stream_wakeup)(sd->mon);
     }
-#endif
+#endif	/** USE_TASK_EVENT_LOGGING */
 
   }
+#endif  /** _USE_BOUNDED_BUFFER */
+
+
+
+#ifdef _USE_UNBOUNDED_BUFFER_
+  LpelTaskCheckYield(self);
+#endif
 
   /* MONITORING CALLBACK */
 #ifdef USE_TASK_EVENT_LOGGING
@@ -350,6 +372,7 @@ void *LpelStreamRead( lpel_stream_desc_t *sd)
     MON_CB(stream_readfinish)(sd->mon, item);
   }
 #endif
+
   return item;
 }
 
@@ -382,6 +405,7 @@ void LpelStreamWrite( lpel_stream_desc_t *sd, void *item)
   }
 #endif
 
+#ifdef _USE_BOUNDED_BUFFER_
   /* quasi P(e_sem) */
   if ( fetch_and_dec( &sd->stream->e_sem)== 0) {
 
@@ -390,11 +414,12 @@ void LpelStreamWrite( lpel_stream_desc_t *sd, void *item)
     if (sd->mon && MON_CB(stream_blockon)) {
       MON_CB(stream_blockon)(sd->mon);
     }
-#endif
+#endif /** USE_TASK_EVENT_LOGGING */
 
     /* wait on stream: */
     LpelTaskBlockStream( self);
   }
+#endif /**  _USE_BOUNDED_BUFFER_ */
 
   /* writing to the buffer and checking if consumer polls must be atomic */
   PRODLOCK_LOCK( &sd->stream->prod_lock);
@@ -419,7 +444,7 @@ void LpelStreamWrite( lpel_stream_desc_t *sd, void *item)
     /* n_sem was -1 */
     lpel_task_t *cons = sd->stream->cons_sd->task;
     /* wakeup consumer: make ready */
-    LpelTaskUnblock( self, cons);
+    LpelTaskUnblock(cons);
 
     /* MONITORING CALLBACK */
 #ifdef USE_TASK_EVENT_LOGGING
@@ -432,8 +457,7 @@ void LpelStreamWrite( lpel_stream_desc_t *sd, void *item)
     if (poll_wakeup) {
       lpel_task_t *cons = sd->stream->cons_sd->task;
       cons->wakeup_sd = sd->stream->cons_sd;
-
-      LpelTaskUnblock( self, cons);
+      LpelTaskUnblock(cons);
 
       /* MONITORING CALLBACK */
 #ifdef USE_TASK_EVENT_LOGGING
@@ -592,3 +616,28 @@ lpel_stream_desc_t *LpelStreamPoll( lpel_streamset_t *set)
 }
 
 
+int LpelStreamFillLevel(lpel_stream_t *s) {
+	int n;
+	PRODLOCK_LOCK( &s->prod_lock);
+	n = LpelBufferCount(&s->buffer);
+	PRODLOCK_UNLOCK( &s->prod_lock);
+	return n;
+}
+
+lpel_task_t *LpelStreamConsumer(lpel_stream_t *s) {
+	if (s->cons_sd != NULL)
+		return s->cons_sd->task;
+	else
+		return NULL;
+}
+
+lpel_task_t *LpelStreamProducer(lpel_stream_t *s) {
+	lpel_task_t *t;
+	PRODLOCK_LOCK( &s->prod_lock);
+	if (s->prod_sd != NULL)
+		t = s->prod_sd->task;
+	else
+		t = NULL;
+	PRODLOCK_UNLOCK( &s->prod_lock);
+	return t;
+}

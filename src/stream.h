@@ -22,6 +22,8 @@ struct lpel_stream_desc_t {
   struct mon_stream_t *mon;   /** monitoring object */
 };
 
-
+int LpelStreamFillLevel(lpel_stream_t *s);
+lpel_task_t *LpelStreamConsumer(lpel_stream_t *s);
+lpel_task_t *LpelStreamProducer(lpel_stream_t *s);
 
 #endif /* _STREAM_H_ */

@@ -9,7 +9,6 @@
 
 #include "arch/atomic.h"
 
-#include "scheduler.h"
 
 
 /**
@@ -21,7 +20,21 @@
 struct workerctx_t;
 struct mon_task_t;
 
+struct stream_elem_t {
+	struct lpel_stream_desc_t *stream_desc;
+	struct stream_elem_t *next;
+};
 
+typedef struct stream_elem_t stream_elem_t;
+
+
+typedef struct {
+	int rec_cnt;
+	int rec_limit;
+	double prior;
+	stream_elem_t *in_streams;
+	stream_elem_t *out_streams;
+} sched_task_t;
 
 
 /**
@@ -34,8 +47,6 @@ struct lpel_task_t {
   enum lpel_taskstate_t state;   /** state */
 
   struct workerctx_t *worker_context;  /** worker context for this task */
-
-  sched_task_t sched_info;
 
   /**
    * indicates the SD which points to the stream which has new data
@@ -53,17 +64,29 @@ struct lpel_task_t {
   lpel_taskfunc_t func; /** function of the task */
   void *inarg;          /** input argument  */
   void *outarg;         /** output argument  */
+
+  /* info supporting scheduling */
+  sched_task_t sched_info;
 };
 
 
-
-
 void LpelTaskDestroy( lpel_task_t *t);
-
-
-void LpelTaskBlock( lpel_task_t *t );
 void LpelTaskBlockStream( lpel_task_t *ct);
-void LpelTaskUnblock( lpel_task_t *ct, lpel_task_t *blocked);
+void LpelTaskUnblock( lpel_task_t *t);
+
+
+/******* DYNAMIC PRIORITY BASED ON THE STREAM FILL LEVEL ***********/
+/**
+ * check and yield if it need to
+ * the yield condition depends on the implementation of the scheduler; e.g. task has processed a limited number of data record
+ */
+void LpelTaskCheckYield(lpel_task_t *t);
+
+void LpelTaskSetPrior(lpel_task_t *t, double p);
+
+void LpelTaskAddStream( lpel_task_t *t, lpel_stream_desc_t *des, char mode);
+void LpelTaskRemoveStream( lpel_task_t *t, lpel_stream_desc_t *des, char mode);
+double LpelTaskCalPrior(lpel_task_t *t);
 
 
 #endif /* _TASK_H_ */

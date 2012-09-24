@@ -1,16 +1,15 @@
-
 #include <stdlib.h>
 #include <assert.h>
-
+#include <stdio.h>
 #include "arch/atomic.h"
 
 #include "task.h"
-
+#include "stream.h"
 #include "lpelcfg.h"
 #include "worker.h"
-#include "spmdext.h"
-#include "stream.h"
 #include "lpel/monitor.h"
+#include "configuration.h"
+
 
 static atomic_t taskseq = ATOMIC_INIT(0);
 
@@ -31,62 +30,69 @@ static void TaskStop( lpel_task_t *t);
 /**
  * Create a task.
  *
- * @param worker  id of the worker where to create the task
+ * @param worker  id of the worker where to create the task (either wrapper -1 or master 0
  * @param func    task function
  * @param arg     arguments
  * @param size    size of the task, including execution stack
+ * @param sc			scheduling condition, decide when a task should yield
  * @pre           size is a power of two, >= 4096
  *
  * @return the task handle of the created task (pointer to TCB)
  *
- * TODO reuse task contexts from the worker
  */
 lpel_task_t *LpelTaskCreate( int worker, lpel_taskfunc_t func,
-    void *inarg, int size)
+		void *inarg, int size)
 {
-  lpel_task_t *t;
-  char *stackaddr;
-  int offset;
+	lpel_task_t *t;
+	char *stackaddr;
+	int offset;
 
-  if (size <= 0) {
-    size = LPEL_TASK_SIZE_DEFAULT;
-  }
-  assert( size >= TASK_MINSIZE );
+	if (size <= 0) {
+		size = LPEL_TASK_SIZE_DEFAULT;
+	}
+	assert( size >= TASK_MINSIZE );
 
-  /* aligned to page boundary */
-  t = valloc( size );
+	/* aligned to page boundary */
+	t = valloc( size );
 
-  /* calc stackaddr */
-  offset = (sizeof(lpel_task_t) + TASK_STACK_ALIGN-1) & ~(TASK_STACK_ALIGN-1);
-  stackaddr = (char *) t + offset;
-  t->size = size;
+	/* calc stackaddr */
+	offset = (sizeof(lpel_task_t) + TASK_STACK_ALIGN-1) & ~(TASK_STACK_ALIGN-1);
+	stackaddr = (char *) t + offset;
+	t->size = size;
 
 
-  /* obtain a usable worker context */
-  t->worker_context = LpelWorkerGetContext(worker);
+	if (worker < 0 )
+		t->worker_context = LpelCreateWrapperContext(t->mon);
+	else
+		t->worker_context = NULL;
 
-  t->sched_info.prio = 0;
+	t->uid = fetch_and_inc( &taskseq);  /* obtain a unique task id */
+	t->func = func;
+	t->inarg = inarg;
 
-  t->uid = fetch_and_inc( &taskseq);  /* obtain a unique task id */
-  t->func = func;
-  t->inarg = inarg;
+	/* initialize poll token to 0 */
+	atomic_init( &t->poll_token, 0);
 
-  /* initialize poll token to 0 */
-  atomic_init( &t->poll_token, 0);
+	t->state = TASK_CREATED;
 
-  t->state = TASK_CREATED;
+	t->prev = t->next = NULL;
 
-  t->prev = t->next = NULL;
+	t->mon = NULL;
 
-  t->mon = NULL;
-
-  /* function, argument (data), stack base address, stacksize */
-  mctx_create( &t->mctx, TaskStartup, (void*)t, stackaddr, t->size - offset);
+	/* function, argument (data), stack base address, stacksize */
+	mctx_create( &t->mctx, TaskStartup, (void*)t, stackaddr, t->size - offset);
 #ifdef USE_MCTX_PCL
-  assert(t->mctx != NULL);
+	assert(t->mctx != NULL);
 #endif
 
-  return t;
+	// default scheduling info
+	t->sched_info.prior = 0;
+	t->sched_info.rec_cnt = 0;
+	t->sched_info.rec_limit = -1;
+	t->sched_info.in_streams = NULL;
+	t->sched_info.out_streams = NULL;
+
+	return t;
 }
 
 
@@ -97,47 +103,44 @@ lpel_task_t *LpelTaskCreate( int worker, lpel_taskfunc_t func,
  */
 void LpelTaskDestroy( lpel_task_t *t)
 {
-  assert( t->state == TASK_ZOMBIE);
+	assert( t->state == TASK_ZOMBIE);
 
 #ifdef USE_TASK_EVENT_LOGGING
-  /* if task had a monitoring object, destroy it */
-  if (t->mon && MON_CB(task_destroy)) {
-    MON_CB(task_destroy)(t->mon);
-  }
+	/* if task had a monitoring object, destroy it */
+	if (t->mon && MON_CB(task_destroy)) {
+		MON_CB(task_destroy)(t->mon);
+	}
 #endif
 
-  atomic_destroy( &t->poll_token);
+	atomic_destroy( &t->poll_token);
 
-//FIXME
+	//FIXME
 #ifdef USE_MCTX_PCL
-  co_delete(t->mctx);
+	co_delete(t->mctx);
 #endif
 
-  /* free the TCB itself*/
-  free(t);
+
+	assert(t->sched_info.in_streams == NULL);
+	assert(t->sched_info.out_streams == NULL);
+	/* free the TCB itself*/
+	free(t);
 }
 
 
 unsigned int LpelTaskGetID(lpel_task_t *t)
 {
-  return t->uid;
+	return t->uid;
 }
 
 mon_task_t *LpelTaskGetMon( lpel_task_t *t )
 {
-  return t->mon;
+	return t->mon;
 }
 
 
 void LpelTaskMonitor(lpel_task_t *t, mon_task_t *mt)
 {
-  t->mon = mt;
-}
-
-
-void LpelTaskPrio(lpel_task_t *t, int prio)
-{
-  t->sched_info.prio = prio;
+	t->mon = mt;
 }
 
 
@@ -146,9 +149,9 @@ void LpelTaskPrio(lpel_task_t *t, int prio)
  */
 void LpelTaskRun( lpel_task_t *t)
 {
-  assert( t->state == TASK_CREATED );
+	assert( t->state == TASK_CREATED );
 
-  LpelWorkerRunTask( t);
+	LpelStartTask( t);
 }
 
 
@@ -160,7 +163,7 @@ void LpelTaskRun( lpel_task_t *t)
  */
 lpel_task_t *LpelTaskSelf(void)
 {
-  return LpelWorkerCurrentTask();
+	return LpelWorkerCurrentTask();
 }
 
 
@@ -172,17 +175,17 @@ lpel_task_t *LpelTaskSelf(void)
  */
 void LpelTaskExit(void *outarg)
 {
-  lpel_task_t *ct = LpelTaskSelf();
-  assert( ct->state == TASK_RUNNING );
+	lpel_task_t *ct = LpelTaskSelf();
+	assert( ct->state == TASK_RUNNING );
 
-  ct->outarg = outarg;
+	ct->outarg = outarg;
 
-  /* context switch happens, this task is cleaned up then */
-  ct->state = TASK_ZOMBIE;
-  LpelWorkerSelfTaskExit(ct);
-  LpelTaskBlock( ct );
-  /* execution never comes back here */
-  assert(0);
+	/* context switch happens, this task is cleaned up then */
+	ct->state = TASK_ZOMBIE;
+	TaskStop( ct);
+	LpelWorkerTaskExit(ct);
+	/* execution never comes back here */
+	assert(0);
 }
 
 
@@ -193,12 +196,13 @@ void LpelTaskExit(void *outarg)
  */
 void LpelTaskYield(void)
 {
-  lpel_task_t *ct = LpelTaskSelf();
-  assert( ct->state == TASK_RUNNING );
+	lpel_task_t *ct = LpelTaskSelf();
+	assert( ct->state == TASK_RUNNING );
 
-  ct->state = TASK_READY;
-  LpelWorkerSelfTaskYield(ct);
-  LpelTaskBlock( ct );
+	ct->state = TASK_READY;
+	TaskStop( ct);
+	LpelWorkerTaskYield(ct);
+	TaskStart( ct);
 }
 
 
@@ -209,49 +213,23 @@ void LpelTaskYield(void)
  */
 void LpelTaskBlockStream(lpel_task_t *t)
 {
-  /* a reference to it is held in the stream */
-  t->state = TASK_BLOCKED;
-  LpelTaskBlock( t );
+	/* a reference to it is held in the stream */
+	assert( t->state == TASK_RUNNING );
+	t->state = TASK_BLOCKED;
+	TaskStop( t);
+	LpelWorkerTaskBlock(t);
+	TaskStart( t);		// task will be backed here when it is dispatched the next time
+
 }
 
 
 /**
  * Unblock a task. Called from StreamRead/StreamWrite procedures
  */
-void LpelTaskUnblock( lpel_task_t *ct, lpel_task_t *blocked)
+void LpelTaskUnblock( lpel_task_t *t)
 {
-  assert(ct != NULL);
-  assert(blocked != NULL);
-
-  LpelWorkerTaskWakeup( ct, blocked);
-}
-
-
-
-
-
-/**
- * Task issues an enter world request
- */
-void LpelTaskEnterSPMD( lpel_spmdfunc_t fun, void *arg)
-{
-  lpel_task_t *ct = LpelTaskSelf();
-  workermsg_t msg;
-  assert( ct->state == TASK_RUNNING );
-
-//FIXME conditional for availability?
-
-  /* world request */
-  LpelSpmdRequest(ct, fun, arg);
-
-  /* broadcast message */
-  msg.type = WORKER_MSG_SPMDREQ;
-  msg.body.from_worker = ct->worker_context->wid;
-  LpelWorkerBroadcast(&msg);
-
-  ct->state = TASK_BLOCKED;
-  /* TODO block on what? */
-  LpelTaskBlock( ct );
+	assert(t != NULL);
+	LpelWorkerTaskWakeup( t);
 }
 
 
@@ -269,67 +247,157 @@ void LpelTaskEnterSPMD( lpel_spmdfunc_t fun, void *arg)
  */
 static void TaskStartup( void *data)
 {
-  lpel_task_t *t = (lpel_task_t *)data;
+	lpel_task_t *t = (lpel_task_t *)data;
 
 #if 0
-  unsigned long z;
+	unsigned long z;
 
-  z = x<<16;
-  z <<= 16;
-  z |= y;
-  t = (lpel_task_t *)z;
+	z = x<<16;
+	z <<= 16;
+	z |= y;
+	t = (lpel_task_t *)z;
 #endif
-  TaskStart( t);
 
-  /* call the task function with inarg as parameter */
-  t->outarg = t->func(t->inarg);
+	TaskStart( t);
 
-  /* if task function returns, exit properly */
-  t->state = TASK_ZOMBIE;
-  LpelWorkerSelfTaskExit(t);
-  LpelTaskBlock( t );
-  /* execution never comes back here */
-  assert(0);
+	/* call the task function with inarg as parameter */
+	t->outarg = t->func(t->inarg);
+
+	/* if task function returns, exit properly */
+	t->state = TASK_ZOMBIE;
+	TaskStop(t);
+	LpelWorkerTaskExit(t);
+	/* execution never comes back here */
+	assert(0);
 }
 
 
 static void TaskStart( lpel_task_t *t)
 {
-  assert( t->state == TASK_READY );
+	// TODO reset task scheduling info
 
-  /* MONITORING CALLBACK */
+	assert( t->state == TASK_READY );
+	/* MONITORING CALLBACK */
 #ifdef USE_TASK_EVENT_LOGGING
-  if (t->mon && MON_CB(task_start)) {
-    MON_CB(task_start)(t->mon);
-  }
+	if (t->mon && MON_CB(task_start)) {
+		MON_CB(task_start)(t->mon);
+	}
 #endif
 
-  t->state = TASK_RUNNING;
+	t->sched_info.rec_cnt = 0;	// reset rec_cnt
+	t->state = TASK_RUNNING;
 }
 
 
 static void TaskStop( lpel_task_t *t)
 {
-  //workerctx_t *wc = t->worker_context;
-  assert( t->state != TASK_RUNNING);
-
-  /* MONITORING CALLBACK */
+	/* MONITORING CALLBACK */
 #ifdef USE_TASK_EVENT_LOGGING
-  if (t->mon && MON_CB(task_stop)) {
-    MON_CB(task_stop)(t->mon, t->state);
-  }
+	if (t->mon && MON_CB(task_stop)) {
+		MON_CB(task_stop)(t->mon, t->state);
+	}
 #endif
 
 }
 
 
-void LpelTaskBlock( lpel_task_t *t )
-{
-  assert( t->state != TASK_RUNNING);
+/*
+ * this will be called before 1 rec is processed
+ * increase the rec count by 1, if it reaches the limit then yield
+ */
+void LpelTaskCheckYield(lpel_task_t *t) {
 
-  TaskStop( t);
-  LpelWorkerDispatcher( t);
-  TaskStart( t);
+	assert( t->state == TASK_RUNNING );
+
+	if (t->sched_info.rec_limit < 0) {		//limit < 0 --> no yield
+		return;
+	}
+
+	if (t->sched_info.rec_cnt > t->sched_info.rec_limit) {
+		t->state = TASK_READY;
+		TaskStop( t);
+		LpelWorkerTaskYield(t);
+		TaskStart( t);
+	}
+	t->sched_info.rec_cnt ++;
+
+}
+
+void LpelTaskSetRecLimit(lpel_task_t *t, int lim) {
+	t->sched_info.rec_limit = lim;
+}
+
+void LpelTaskSetPrior(lpel_task_t *t, double p) {
+	t->sched_info.prior = p;
 }
 
 
+void LpelTaskAddStream( lpel_task_t *t, lpel_stream_desc_t *des, char mode) {
+	stream_elem_t **list;
+	stream_elem_t *head;
+	switch (mode) {
+	case 'r':
+		list = &t->sched_info.in_streams;
+		break;
+	case 'w':
+		list = &t->sched_info.out_streams;
+		break;
+	}
+	head = *list;
+	stream_elem_t *new = (stream_elem_t *) malloc(sizeof(stream_elem_t));
+	new->stream_desc = des;
+	if (head)
+		new->next = head;
+  else
+		new->next = NULL;
+	*list = new;
+}
+
+
+void LpelTaskRemoveStream( lpel_task_t *t, lpel_stream_desc_t *des, char mode) {
+	stream_elem_t **list;
+	stream_elem_t *head;
+	switch (mode) {
+	case 'r':
+		list = &t->sched_info.in_streams;
+		break;
+	case 'w':
+		list = &t->sched_info.out_streams;
+		break;
+	}
+	head = *list;
+
+	stream_elem_t *prev = NULL;
+
+	while (head != NULL) {
+		if (head->stream_desc == des)
+			break;
+		prev = head;
+		head = head->next;
+	}
+
+	assert(head != NULL);		//item must be in the list
+	if (prev == NULL)
+		*list = head->next;
+	else
+		prev->next = head->next;
+
+	free(head);
+}
+
+
+
+int countRec(stream_elem_t *list) {
+	int cnt = 0;
+	while (list != NULL) {
+		cnt += LpelStreamFillLevel(list->stream_desc->stream);
+		list = list->next;
+	}
+	return cnt;
+}
+
+double LpelTaskCalPrior(lpel_task_t *t) {
+	int in = countRec(t->sched_info.in_streams);
+	int out = countRec(t->sched_info.out_streams);
+	return (in + 1.0)/((out + 1.0)*(in + out + 1.0));
+}

@@ -2,25 +2,34 @@
 #define _TASKQUEUE_H_
 
 #include "task.h"
+#include "configuration.h"
 
-
-typedef struct {
+#ifdef _USE_FIFO_QUEUE_
+struct taskqueue_t{
   lpel_task_t *head, *tail;
   unsigned int count;
-} taskqueue_t;
+};
+#endif
 
-void LpelTaskqueueInit( taskqueue_t *tq);
+#ifdef _USE_PRIORITY_QUEUE_
+struct taskqueue_t{
+  lpel_task_t **heap;
+  unsigned int count;
+  unsigned int alloc;
+};
+#endif
 
-void LpelTaskqueuePushBack(  taskqueue_t *tq, lpel_task_t *t);
-void LpelTaskqueuePushFront( taskqueue_t *tq, lpel_task_t *t);
 
-lpel_task_t *LpelTaskqueuePopBack(  taskqueue_t *tq);
-lpel_task_t *LpelTaskqueuePopFront( taskqueue_t *tq);
+typedef struct taskqueue_t taskqueue_t;
 
+taskqueue_t *LpelTaskqueueInit();
 
-int LpelTaskqueueIterateRemove( taskqueue_t *tq,
-    int  (*cond)( lpel_task_t*,void*),
-    void (*action)(lpel_task_t*,void*),
-    void *arg );
+void LpelTaskqueuePush(  taskqueue_t *tq, lpel_task_t *t);
+lpel_task_t *LpelTaskqueuePop( taskqueue_t *tq);
 
-#endif /* _TASKQUEUE_H_ */
+int LpelTaskqueueSize(taskqueue_t *tq) ;
+void LpelTaskqueueDestroy(taskqueue_t *tq);
+lpel_task_t *LpelTaskqueuePeek( taskqueue_t *tq);
+void LpelTaskqueueUpdatePrior(taskqueue_t *tq, lpel_task_t *t, double np);
+
+#endif

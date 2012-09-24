@@ -410,30 +410,22 @@ static void MonCbWorkerDestroy(mon_worker_t *mon)
 
 
 
+static void MonCbWorkerTskReq( mon_worker_t *mon) {
+			  LpelTimingStart(&mon->wait_current);
 
-
-
-
-
-static void MonCbWorkerWaitStart(mon_worker_t *mon)
-{
-  mon->wait_cnt++;
-  LpelTimingStart(&mon->wait_current);
+			/* write message */
+			lpel_timing_t tnow;
+			LpelTimingNow( &tnow);
+			PrintNormTS( &tnow, mon->outfile);
+			fprintf( mon->outfile, "Worker %d request for a new task\n", mon->wid);
 }
 
-
-static void MonCbWorkerWaitStop(mon_worker_t *mon)
-{
-  LpelTimingEnd(&mon->wait_current);
-  LpelTimingAdd(&mon->wait_total, &mon->wait_current);
-
-  MonCbDebug( mon,
-      "worker %d waited (%u) for %lu.%09lu\n",
-      mon->wid, mon->wait_cnt,
-      (unsigned long) mon->wait_current.tv_sec, (mon->wait_current.tv_nsec)
-      );
+static void MonCbWorkerTskAss( mon_worker_t *mon) {
+			/* write message */
+			lpel_timing_t tnow;
+			LpelTimingNow( &tnow);
+			fprintf( mon->outfile, "Worker %d get a new task\n", mon->wid);
 }
-
 
 
 
@@ -669,8 +661,8 @@ void LpelMonInit(lpel_monitoring_cb_t *cb)
   cb->worker_create         = MonCbWorkerCreate;
   cb->worker_create_wrapper = MonCbWrapperCreate;
   cb->worker_destroy        = MonCbWorkerDestroy;
-  cb->worker_waitstart      = MonCbWorkerWaitStart;
-  cb->worker_waitstop       = MonCbWorkerWaitStop;
+  cb->worker_tskass 	     = MonCbWorkerTskAss;
+  cb->worker_tskreq   	    = MonCbWorkerTskReq;
   //cb->worker_debug          = MonCbDebug;
   cb->task_destroy = MonCbTaskDestroy;
   cb->task_assign  = MonCbTaskAssign;

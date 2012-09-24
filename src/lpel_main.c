@@ -201,7 +201,7 @@ int LpelInit(lpel_config_t *cfg)
 
 
   /* initialise workers */
-  LpelWorkerInit( _lpel_global_config.num_workers);
+  LpelMasterInit( _lpel_global_config.num_workers);
 
 
   return 0;
@@ -210,13 +210,13 @@ int LpelInit(lpel_config_t *cfg)
 
 void LpelStart(void)
 {
-  LpelWorkerSpawn();
+  LpelMasterSpawn();
 }
 
 
 void LpelStop(void)
 {
-  LpelWorkerTerminate();
+  LpelMasterTerminate();
 }
 
 
@@ -229,7 +229,7 @@ void LpelStop(void)
 void LpelCleanup(void)
 {
   /* Cleanup workers */
-  LpelWorkerCleanup();
+  LpelMasterCleanup();
 
 #ifdef USE_MCTX_PCL
   /* cleanup machine context for main thread */

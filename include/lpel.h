@@ -27,7 +27,10 @@
 
 enum lpel_taskstate_t {
   TASK_CREATED = 'C',
+  TASK_INQUEUE = 'Q',
+//  TASK_ASSIGNED = 'S',
   TASK_RUNNING = 'U',
+  TASK_RETURNED = 'T',
   TASK_READY   = 'R',
   TASK_BLOCKED = 'B',
   TASK_MUTEX   = 'X',
@@ -45,9 +48,11 @@ typedef struct lpel_monitoring_cb_t {
   mon_worker_t *(*worker_create)(int);
   mon_worker_t *(*worker_create_wrapper)(mon_task_t *);
   void (*worker_destroy)(mon_worker_t*);
-  void (*worker_waitstart)(mon_worker_t*);
-  void (*worker_waitstop)(mon_worker_t*);
-  //void (*worker_debug)(mon_worker_t*, const char *fmt, ...);
+  void (*worker_tskreq)(mon_worker_t*);
+  void (*worker_tskass)(mon_worker_t*);
+
+
+
   /* task callbacks */
   /* note: no callback for task creation
    * - manual attachment required
@@ -56,6 +61,7 @@ typedef struct lpel_monitoring_cb_t {
   void (*task_assign)(mon_task_t*, mon_worker_t*);
   void (*task_start)(mon_task_t*);
   void (*task_stop)(mon_task_t*, enum lpel_taskstate_t);
+
   /* stream callbacks */
   mon_stream_t *(*stream_open)(mon_task_t*, unsigned int, char);
   void (*stream_close)(mon_stream_t*);
@@ -165,7 +171,7 @@ lpel_task_t *LpelTaskCreate( int worker, lpel_taskfunc_t func,
 /** monitor a task */
 void LpelTaskMonitor(lpel_task_t *t, mon_task_t *mt);
 
-void LpelTaskPrio(lpel_task_t *t, int prio);
+//void LpelTaskPrio(lpel_task_t *t, int prio);
 
 unsigned int LpelTaskGetID( lpel_task_t *t );
 mon_task_t *LpelTaskGetMon( lpel_task_t *t );
@@ -178,9 +184,6 @@ void LpelTaskRun( lpel_task_t *t );
 lpel_task_t *LpelTaskSelf(void);
 void LpelTaskExit(void *outarg);
 void LpelTaskYield(void);
-
-/** enter SPMD request */
-void LpelTaskEnterSPMD(lpel_spmdfunc_t, void *);
 
 
 /******************************************************************************/
@@ -231,6 +234,7 @@ void LpelStreamIterAppend(  lpel_stream_iter_t *iter, lpel_stream_desc_t *node);
 void LpelStreamIterRemove(  lpel_stream_iter_t *iter);
 
 
-
+/* for dynamic scheduling */
+void LpelTaskSetRecLimit(lpel_task_t *t, int lim);
 
 #endif /* _LPEL_H_ */
