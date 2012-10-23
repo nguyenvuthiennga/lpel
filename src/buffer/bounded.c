@@ -126,7 +126,7 @@ void LpelBufferPut( buffer_t *buf, void *item)
 }
 
 int LpelBufferCount( buffer_t *buf) {
-	int c = buf->write - buf->read;
+	int c = buf->pwrite - buf->pread;
 	return (c > 0) ? c : c + buf->size;
 }
 

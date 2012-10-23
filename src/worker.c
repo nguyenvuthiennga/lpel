@@ -327,13 +327,14 @@ static void MasterLoop( void)
 		case MSG_TASKREQ:
 			wid = msg.body.from_worker;
 			PRT_DBG("master: request task from worker %d\n", wid);
-			t = LpelTaskqueuePop(MASTER_PTR->ready_tasks);
+			t = LpelTaskqueuePeek(MASTER_PTR->ready_tasks);
 			if (t == NULL) {
 				waitworkers[wid] = 1;
 			} else {
 				t->state = TASK_READY;
 				sendTask(wid, t);
 			}
+			t = LpelTaskqueuePop(MASTER_PTR->ready_tasks);
 			break;
 
 //		case MSG_UPDATEPRIOR:
