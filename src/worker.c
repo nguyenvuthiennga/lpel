@@ -67,7 +67,7 @@ void LpelMasterInit( int size) {
 	/** create workers */
 #ifndef HAVE___THREAD
 	/* init key for thread specific data */
-	pthread_key_create(&workerctx_key, NULL);
+	pthread_key_create(&masterctx_key, NULL);
 #endif /* HAVE___THREAD */
 
 	/* allocate worker context table */
