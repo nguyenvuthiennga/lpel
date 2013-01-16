@@ -89,7 +89,6 @@ typedef struct lpel_monitoring_cb_t {
  *              proc_others > 0 and the process has needed privileges.
  */
 typedef struct {
-  int num_workers;
   int proc_workers;
   int proc_others;
   int flags;

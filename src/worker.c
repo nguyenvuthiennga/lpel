@@ -50,7 +50,7 @@ void LpelMasterInit( int size) {
 
 	int i;
 	assert(0 <= size);
-	num_workers = size - 1;		// one for master
+	num_workers = size;
 
 
 	/** create master */

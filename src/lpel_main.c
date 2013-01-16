@@ -16,21 +16,21 @@
 #include <lpel.h>
 
 #include "arch/mctx.h"
-//#include "lpel_main.h"
+#include "lpel_main.h"
 #include "lpelcfg.h"
 #include "worker.h"
+
 
 
 #ifdef HAVE_PROC_CAPABILITIES
 #  include <sys/capability.h>
 #endif
 
-
-
 /* test if flags are set in lpel config */
 #define LPEL_ICFG(f)   ( (_lpel_global_config.flags & (f)) == (f) )
 
 #ifdef HAVE_PTHREAD_SETAFFINITY_NP
+#define _GNU_SOURCE
 /* cpuset for others-threads */
 static cpu_set_t cpuset_others;
 
@@ -97,7 +97,7 @@ static int CheckConfig( void)
   int proc_avail;
 
   /* input sanity checks */
-  if ( cfg->num_workers <= 0 ||  cfg->proc_workers <= 0 ) {
+  if ( cfg->proc_workers <= 0 ) {
     return LPEL_ERR_INVAL;
   }
   if ( cfg->proc_others < 0 ) {
@@ -109,17 +109,13 @@ static int CheckConfig( void)
     if (cfg->proc_workers + cfg->proc_others > proc_avail) {
       return LPEL_ERR_INVAL;
     }
-    /* check exclusive flag sanity */
-    if ( LPEL_ICFG( LPEL_FLAG_EXCLUSIVE) ) {
-      /* check if we can do a 1-1 mapping */
-      /*if ( (cfg->proc_others== 0) || (cfg->num_workers!=cfg->proc_workers) ) {
-        return LPEL_ERR_INVAL;
-      }*/
-    }
   }
 
   /* additional flags for exclusive flag */
   if ( LPEL_ICFG( LPEL_FLAG_EXCLUSIVE) ) {
+  	/* check if we have extra cpus for others */
+  	if (cfg->proc_others== 0)
+  		return LPEL_ERR_INVAL;
     int can_rt;
     /* pinned flag must also be set */
     if ( !LPEL_ICFG( LPEL_FLAG_PINNED) ) {
@@ -170,14 +166,13 @@ static void CreateCpusets( void)
 /**
  * Initialise the LPEL
  *
- *  num_workers, proc_workers > 0
+ *  proc_workers > 0
  *  proc_others >= 0
  *
  *
  * EXCLUSIVE: only valid, if
  *       #proc_avail >= proc_workers + proc_others &&
- *       proc_others != 0 &&
- *       num_workers == proc_workers
+ *       proc_others != 0
  *
  */
 int LpelInit(lpel_config_t *cfg)
@@ -201,7 +196,7 @@ int LpelInit(lpel_config_t *cfg)
 
 
   /* initialise workers */
-  LpelMasterInit( _lpel_global_config.num_workers);
+  LpelMasterInit( _lpel_global_config.proc_workers);
 
 
   return 0;
@@ -289,7 +284,6 @@ int LpelThreadAssign( int core)
       if( res != 0) return LPEL_ERR_ASSIGN;
     }
   }
-
   #endif /* HAVE_PTHREAD_SETAFFINITY_NP */
   return 0;
 }
