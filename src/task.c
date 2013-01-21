@@ -30,7 +30,7 @@ static void TaskStop( lpel_task_t *t);
 /**
  * Create a task.
  *
- * @param worker  id of the worker where to create the task (either wrapper -1 or master 0
+ * @param worker  id of the worker where to create the task (0 = master, -1 = others, -2 = sosi)
  * @param func    task function
  * @param arg     arguments
  * @param size    size of the task, including execution stack
@@ -40,7 +40,7 @@ static void TaskStop( lpel_task_t *t);
  * @return the task handle of the created task (pointer to TCB)
  *
  */
-lpel_task_t *LpelTaskCreate( int worker, lpel_taskfunc_t func,
+lpel_task_t *LpelTaskCreate( int map, lpel_taskfunc_t func,
 		void *inarg, int size)
 {
 	lpel_task_t *t;
@@ -61,8 +61,8 @@ lpel_task_t *LpelTaskCreate( int worker, lpel_taskfunc_t func,
 	t->size = size;
 
 
-	if (worker < 0 )
-		t->worker_context = LpelCreateWrapperContext(t->mon);
+	if (map != LPEL_MAP_MASTER )	/** others wrapper or source/sink */
+		t->worker_context = LpelCreateWrapperContext(map);
 	else
 		t->worker_context = NULL;
 
@@ -127,7 +127,7 @@ void LpelTaskDestroy( lpel_task_t *t)
 }
 
 
-unsigned int LpelTaskGetID(lpel_task_t *t)
+unsigned int LpelTaskGetId(lpel_task_t *t)
 {
 	return t->uid;
 }

@@ -21,6 +21,8 @@
 #define LPEL_ERR_EXCL        3 /* Cannot assign core exclusively */
 
 
+
+
 /******************************************************************************/
 /*  GENERAL CONFIGURATION AND SETUP                                           */
 /******************************************************************************/
@@ -89,7 +91,9 @@ typedef struct lpel_monitoring_cb_t {
  *              proc_others > 0 and the process has needed privileges.
  */
 typedef struct {
+	int num_workers;
   int proc_workers;
+  int proc_sosi;
   int proc_others;
   int flags;
   struct lpel_monitoring_cb_t mon;
@@ -98,12 +102,19 @@ typedef struct {
 
 
 
+/******************************************************************************/
+/*  LPEL MAP ID (logical cpu id)											                        */
+/******************************************************************************/
+#define LPEL_MAP_MASTER 		0
+#define LPEL_MAP_OTHERS		 -1
+#define LPEL_MAP_SOSI			 -2
 
 
 
 #define LPEL_FLAG_NONE           (0)
 #define LPEL_FLAG_PINNED      (1<<0)
 #define LPEL_FLAG_EXCLUSIVE   (1<<1)
+#define LPEL_FLAG_SOSI				(1<<2)
 
 
 
@@ -172,7 +183,7 @@ void LpelTaskMonitor(lpel_task_t *t, mon_task_t *mt);
 
 //void LpelTaskPrio(lpel_task_t *t, int prio);
 
-unsigned int LpelTaskGetID( lpel_task_t *t );
+unsigned int LpelTaskGetId( lpel_task_t *t );
 mon_task_t *LpelTaskGetMon( lpel_task_t *t );
 
 /** let the previously created task run */
@@ -204,6 +215,7 @@ void *LpelStreamPeek(     lpel_stream_desc_t *sd);
 void *LpelStreamRead(     lpel_stream_desc_t *sd);
 void  LpelStreamWrite(    lpel_stream_desc_t *sd, void *item);
 int   LpelStreamTryWrite( lpel_stream_desc_t *sd, void *item);
+int 	LpelStreamGetId ( lpel_stream_desc_t *sd);
 
 lpel_stream_t *LpelStreamGet(lpel_stream_desc_t *sd);
 
@@ -218,6 +230,7 @@ lpel_stream_desc_t *LpelStreamPoll(    lpel_streamset_t *set);
 void LpelStreamsetPut(  lpel_streamset_t *set, lpel_stream_desc_t *node);
 int  LpelStreamsetRemove( lpel_streamset_t *set, lpel_stream_desc_t *node);
 int  LpelStreamsetIsEmpty( lpel_streamset_t *set);
+
 
 
 /** stream iterator functions */

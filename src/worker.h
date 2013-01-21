@@ -45,7 +45,7 @@ typedef struct masterctx_t {
 #define WORKER_DBGMSG(wc,...) /*NOP*/
 #endif /* LPEL_DEBUG_WORKER */
 
-workerctx_t *LpelCreateWrapperContext();
+workerctx_t *LpelCreateWrapperContext(int wid);		// can be wrapper or source/sink
 workerctx_t *LpelWorkerSelf(void);
 lpel_task_t *LpelWorkerCurrentTask(void);
 

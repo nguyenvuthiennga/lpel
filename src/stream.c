@@ -641,3 +641,11 @@ lpel_task_t *LpelStreamProducer(lpel_stream_t *s) {
 	PRODLOCK_UNLOCK( &s->prod_lock);
 	return t;
 }
+
+int LpelStreamGetId ( lpel_stream_desc_t *sd){
+	if (!sd)
+		return -1;
+	if (!sd->stream)
+		return -1;
+	return sd->stream->uid;
+}

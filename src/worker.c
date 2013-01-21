@@ -50,7 +50,7 @@ void LpelMasterInit( int size) {
 
 	int i;
 	assert(0 <= size);
-	num_workers = size;
+	num_workers = size - 1;
 
 
 	/** create master */
@@ -375,7 +375,7 @@ static void *MasterThread( void *arg)
 
   /* assign to cores */
   ms->terminate = 0;
-  LpelThreadAssign( 0);
+  LpelThreadAssign( LPEL_MAP_MASTER);
 
   // master loop, no monitor for master
   MasterLoop();
@@ -414,6 +414,18 @@ static void WrapperLoop( workerctx_t *wp)
 				assert(t->state == TASK_CREATED);
 				t->state = TASK_READY;
 				wp->wraptask = t;
+#ifdef USE_LOGGING
+				if (t->mon) {
+					if (MON_CB(worker_create_wrapper)) {
+						wp->mon = MON_CB(worker_create_wrapper)(t->mon);
+					} else {
+						wp->mon = NULL;
+					}
+				}
+				if (t->mon && MON_CB(task_assign)) {
+					MON_CB(task_assign)(t->mon, wp->mon);
+				}
+#endif
 				break;
 
 			case MSG_TASKWAKEUP:
@@ -422,6 +434,11 @@ static void WrapperLoop( workerctx_t *wp)
 				assert (t->state == TASK_BLOCKED);
 				t->state = TASK_READY;
 				wp->wraptask = t;
+#ifdef USE_LOGGING
+				if (t->mon && MON_CB(task_assign)) {
+					MON_CB(task_assign)(t->mon, wp->mon);
+				}
+#endif
 				break;
 			default:
 				assert(0);
@@ -451,15 +468,8 @@ static void *WrapperThread( void *arg)
 	wp->mctx = co_current();
 #endif
 
-	LpelThreadAssign( wp->wid);		// -1 for wrapper
+	LpelThreadAssign( wp->wid);
 	WrapperLoop( wp);
-
-	//#ifdef USE_LOGGING
-	//  /* cleanup monitoring */
-	//  if (wc->mon && MON_CB(worker_destroy)) {
-	//    MON_CB(worker_destroy)(wc->mon);
-	//  }
-	//#endif
 
 	LpelMailboxDestroy(wp->mailbox);
 	free( wp);
@@ -470,9 +480,9 @@ static void *WrapperThread( void *arg)
 	return NULL;
 }
 
-workerctx_t *LpelCreateWrapperContext() {
+workerctx_t *LpelCreateWrapperContext(int wid) {
 	workerctx_t *wp = (workerctx_t *) malloc( sizeof( workerctx_t));
-	wp->wid = -1;
+	wp->wid = wid;
 	wp->terminate = 0;
 	/* Wrapper is excluded from scheduling module */
 	wp->wraptask = NULL;
@@ -630,8 +640,13 @@ void LpelWorkerTaskExit(lpel_task_t *t) {
 
 void LpelWorkerTaskBlock(lpel_task_t *t){
 	workerctx_t *wc = t->worker_context;
-	if (wc->wid == -1) {	//wrapper
+	if (wc->wid < 0) {	//wrapper
 			wc->wraptask = NULL;
+#ifdef USE_LOGGING
+			if (wc->mon && MON_CB(worker_tskreq)) {
+				MON_CB(worker_tskreq)(wc->mon);
+			}
+#endif
 	} else {
 		PRT_DBG("worker %d: block task %d\n", wc->wid, t->uid);
 		//sendUpdatePrior(t);		//update prior for neighbor
@@ -643,7 +658,7 @@ void LpelWorkerTaskBlock(lpel_task_t *t){
 
 void LpelWorkerTaskYield(lpel_task_t *t){
 	workerctx_t *wc = t->worker_context;
-	if (wc->wid == -1) {	//wrapper
+	if (wc->wid < 0) {	//wrapper
 			wc->wraptask = t;
 			PRT_DBG("wrapper: task %d yields\n");
 	}
@@ -662,7 +677,7 @@ void LpelWorkerTaskWakeup( lpel_task_t *t) {
 	if (wc == NULL)
 		sendWakeup(MASTER_PTR->mailbox, t);
 	else {
-		if (wc->wid == -1)
+		if (wc->wid < 0)
 			sendWakeup(wc->mailbox, t);
 		else
 			sendWakeup(MASTER_PTR->mailbox, t);
