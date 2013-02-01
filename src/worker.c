@@ -122,6 +122,14 @@ void LpelMasterCleanup( void) {
 	/* free workers tables */
 	free( workers);
 	free( waitworkers);
+
+	/* clean up master's mailbox */
+	workermsg_t msg;
+	while (LpelMailboxHasIncoming(MASTER_PTR->mailbox)) {
+		LpelMailboxRecv(MASTER_PTR->mailbox, &msg);
+		assert(msg.type == MSG_TASKREQ);
+	}
+
 	LpelMailboxDestroy(master->mailbox);
 	LpelTaskqueueDestroy(master->ready_tasks);
 	free(master);
@@ -168,7 +176,6 @@ void LpelStartTask( lpel_task_t *t) {
 
 /*******************************************************************************
 *******************************************************************************/
-
 static void returnTask( lpel_task_t *t) {
 	workermsg_t msg;
 	msg.type = MSG_TASKRET;
@@ -296,10 +303,7 @@ static void MasterLoop( void)
 				}
 				break;
 
-			case TASK_ZOMBIE:
-				LpelTaskDestroy(t);
-				break;
-			default:
+			default: // TASK_ZOMBIE
 				assert(0);
 				break;
 			}
@@ -550,8 +554,11 @@ static void WorkerLoop( workerctx_t *wc)
   	  	mctx_switch(&wc->mctx, &t->mctx);
   	  	//task return here
   	  	assert(t->state != TASK_RUNNING);
-  	  	t->worker_context = NULL;
-  	  	returnTask(t);
+  	  	if (t->state != TASK_ZOMBIE) {
+  	  		t->worker_context = NULL;
+  	  		returnTask(t);
+  	  	} else
+  	  		LpelTaskDestroy(t);		// if task finish, destroy it and not return to master
   	  	break;
   	  case MSG_TERMINATE:
   	  	wc->terminate = 1;
