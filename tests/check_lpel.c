@@ -1,152 +1,55 @@
+#include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
 #include "lpel.h"
-#include "../modimpl/monitoring.h"
 
 
-
-
-typedef struct {
-  lpel_stream_t *in, *out;
-  int id;
-} channels_t;
-
-
-
-void *Relay(void *inarg)
-{
-  channels_t *ch = (channels_t *)inarg;
-  int term = 0;
-  int id = ch->id;
-  char *item;
-  lpel_stream_desc_t *in, *out;
-
-  in = LpelStreamOpen(ch->in, 'r');
-  out = LpelStreamOpen(ch->out, 'w');
-
-  printf("Relay %d START\n", id);
-
-  while (!term) {
-    item = LpelStreamRead( in);
-    assert( item != NULL );
-    //printf("Relay %d: %s", id, item );
-    if ( 0 == strcmp( item, "T\n")) {
-      term = 1;
-    }
-    LpelStreamWrite( out, item);
-  } // end while
-  LpelStreamClose( in, 1);
-  LpelStreamClose( out, 0);
-  free(ch);
-  printf("Relay %d TERM\n", id);
-  return NULL;
-}
-
-
-static channels_t *ChannelsCreate(lpel_stream_t *in, lpel_stream_t *out, int id)
-{
-  channels_t *ch = (channels_t *) malloc( sizeof(channels_t));
-  ch->in = in;
-  ch->out = out;
-  ch->id = id;
-  return ch;
-}
-
-lpel_stream_t *PipeElement(lpel_stream_t *in, int depth)
-{
-  lpel_stream_t *out;
-  channels_t *ch;
-  lpel_task_t *t;
-  int wid = depth % 2;
-  mon_task_t *mt;
-
-  out = LpelStreamCreate(0);
-  ch = ChannelsCreate( in, out, depth);
-  t = LpelTaskCreate( wid, Relay, ch, 8192);
-  mt = LpelMonTaskCreate(LpelTaskGetId(t), NULL, LPEL_MON_TASK_TIMES | LPEL_MON_TASK_STREAMS);
-  LpelTaskMonitor(t, mt);
-  LpelTaskRun(t);
-
-  printf("Created Relay %d\n", depth );
-  return (depth > 0) ? PipeElement( out, depth-1) : out;
-}
-
-
-
-static void *Outputter(void *arg)
-{
-  lpel_stream_desc_t *in = LpelStreamOpen((lpel_stream_t*)arg, 'r'); 
-  char *item;
-  int term = 0;
-
-  printf("Outputter START\n");
-
-  while (!term) {
-    item = LpelStreamRead(in);
-    assert( item != NULL );
-    printf("Out: %s", item );
-
-    if ( 0 == strcmp( item, "T\n")) {
-      term = 1;
-    }
-    free( item);
-  } // end while
-
-  LpelStreamClose( in, 1);
-  printf("Outputter TERM\n");
-
-  LpelStop();
-  return NULL;
-}
-
-
-static void *Inputter(void *arg)
-{
-  lpel_stream_desc_t *out = LpelStreamOpen((lpel_stream_t*)arg, 'w'); 
-  char *buf;
-
-  printf("Inputter START\n");
-  do {
-    buf = fgets( malloc( 120 * sizeof(char) ), 119, stdin  );
-    LpelStreamWrite( out, buf);
-  } while ( 0 != strcmp(buf, "T\n") );
-
-  LpelStreamClose( out, 0);
-  printf("Inputter TERM\n");
-  return NULL;
+void taskFunc(void **arg) {
+	lpel_task_t *self = (lpel_task_t *) *arg;
+	int i;
+	int n;
+	int tid = LpelTaskGetId(self);
+	int count  = (tid + 1) * 100;
+	while (1) {
+		n = 0;
+		printf("task %d run on worker %d\n", tid, LpelTaskGetWorkerId(self));
+		for (i = 0; i < count; i++) {
+			n++;
+		}
+		sleep(2);
+		printf("task %d count till %d, and now return to master\n", tid, n);
+		LpelTaskYield();
+	}
 }
 
 static void testBasic(void)
 {
-  lpel_stream_t *in, *out;
   lpel_config_t cfg;
-  lpel_task_t *intask, *outtask;
-  mon_task_t *mt;
-
-  cfg.num_workers = 2;
-  cfg.proc_workers = 2;
+  lpel_task_t *t1, *t2, *t3;
+  void *arg1, *arg2, *arg3;
+  cfg.num_workers = 3;
+  cfg.proc_workers = 3;
   cfg.proc_others = 0;
+  cfg.proc_sosi = 0;
   cfg.flags = 0;
 
-  LpelMonInit(&cfg.mon);
   LpelInit(&cfg);
 
+  t1 = LpelTaskCreate( 0, taskFunc, &arg1, 0);
+  arg1 = t1;
 
-  in = LpelStreamCreate(0);
-  out = PipeElement(in, cfg.num_workers*20 - 1);
+  t2 = LpelTaskCreate( 0, taskFunc, &arg2, 0);
+  arg2 = t2;
 
-  outtask = LpelTaskCreate( -1, Outputter, out, 8192);
-  mt = LpelMonTaskCreate( LpelTaskGetId(outtask), "outtask", LPEL_MON_TASK_TIMES);
-  LpelTaskMonitor(outtask, mt);
-  LpelTaskRun(outtask);
+  t3 = LpelTaskCreate( 0, taskFunc, &arg3, 0);
+  arg3 = t3;
 
-  intask = LpelTaskCreate( -1, Inputter, in, 8192);
-  mt = LpelMonTaskCreate( LpelTaskGetId(intask), "intask", LPEL_MON_TASK_TIMES);
-  LpelTaskMonitor(intask, mt);
-  LpelTaskRun(intask);
+  LpelTaskRun(t1);
+  LpelTaskRun(t2);
+  LpelTaskRun(t3);
 
   LpelStart();
   LpelCleanup();

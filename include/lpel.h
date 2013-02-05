@@ -184,6 +184,10 @@ void LpelTaskMonitor(lpel_task_t *t, mon_task_t *mt);
 //void LpelTaskPrio(lpel_task_t *t, int prio);
 
 unsigned int LpelTaskGetId( lpel_task_t *t );
+
+// for debugging
+int LpelTaskGetWorkerId(lpel_task_t *t);
+
 mon_task_t *LpelTaskGetMon( lpel_task_t *t );
 
 /** let the previously created task run */

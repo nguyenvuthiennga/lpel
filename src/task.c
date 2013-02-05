@@ -401,3 +401,12 @@ double LpelTaskCalPrior(lpel_task_t *t) {
 	int out = countRec(t->sched_info.out_streams);
 	return (in + 1.0)/((out + 1.0)*(in + out + 1.0));
 }
+
+
+
+int LpelTaskGetWorkerId(lpel_task_t *t) {
+	if (t->worker_context)
+		return t->worker_context->wid;
+	else
+		return -1;
+}
