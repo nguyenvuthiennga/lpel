@@ -24,6 +24,8 @@ liblpel_la_SOURCES = \
 	src/streamset.c \
 	src/task.c \
 	src/task.h \
+	src/taskprior.c \
+	src/taskprior.h \
 	src/taskqueue.h \
 	src/queues/fifo.c \
 	src/queues/priority.c \

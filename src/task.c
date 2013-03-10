@@ -9,11 +9,11 @@
 #include "worker.h"
 #include "lpel/monitor.h"
 #include "configuration.h"
-
+#include "taskprior.h"
 
 static atomic_t taskseq = ATOMIC_INIT(0);
 
-
+static double (*prior_cal) (int in, int out);
 
 /* declaration of startup function */
 //static void TaskStartup( unsigned int y, unsigned int x);
@@ -388,6 +388,8 @@ void LpelTaskRemoveStream( lpel_task_t *t, lpel_stream_desc_t *des, char mode) {
 
 
 int countRec(stream_elem_t *list) {
+	if (list == NULL)
+		return -1;
 	int cnt = 0;
 	while (list != NULL) {
 		cnt += LpelStreamFillLevel(list->stream_desc->stream);
@@ -396,13 +398,44 @@ int countRec(stream_elem_t *list) {
 	return cnt;
 }
 
+
 double LpelTaskCalPrior(lpel_task_t *t) {
 	int in = countRec(t->sched_info.in_streams);
 	int out = countRec(t->sched_info.out_streams);
-	return (in + 1.0)/((out + 1.0)*(in + out + 1.0));
+	return prior_cal(in, out);
+//	return (in + 1.0)/((out + 1.0)*(in + out + 1.0));
+
 }
 
-
+void LpelTaskSetPriorFunc(int func){
+	switch (func){
+	case 1: prior_cal = priorfunc1;
+					break;
+	case 2: prior_cal = priorfunc2;
+					break;
+	case 3: prior_cal = priorfunc3;
+					break;
+	case 4: prior_cal = priorfunc4;
+					break;
+	case 5: prior_cal = priorfunc5;
+					break;
+	case 6: prior_cal = priorfunc6;
+					break;
+	case 7: prior_cal = priorfunc7;
+					break;
+	case 8: prior_cal = priorfunc8;
+					break;
+	case 9: prior_cal = priorfunc9;
+					break;
+	case 10: prior_cal = priorfunc10;
+					break;
+	case 11: prior_cal = priorfunc11;
+					break;
+	case 12: prior_cal = priorfunc12;
+					break;
+	default: prior_cal = priorfunc1;
+	}
+}
 
 int LpelTaskGetWorkerId(lpel_task_t *t) {
 	if (t->worker_context)
@@ -410,3 +443,5 @@ int LpelTaskGetWorkerId(lpel_task_t *t) {
 	else
 		return -1;
 }
+
+

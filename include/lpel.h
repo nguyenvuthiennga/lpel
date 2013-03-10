@@ -199,6 +199,7 @@ lpel_task_t *LpelTaskSelf(void);
 void LpelTaskExit(void *outarg);
 void LpelTaskYield(void);
 
+void LpelTaskSetPriorFunc(int func);
 
 /******************************************************************************/
 /*  STREAM FUNCTIONS                                                          */
