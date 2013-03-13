@@ -314,6 +314,10 @@ void *LpelStreamRead( lpel_stream_desc_t *sd)
   lpel_task_t *self = sd->task;
   assert( sd->mode == 'r');
 
+  #ifdef _USE_UNBOUNDED_BUFFER_
+  LpelTaskCheckYield(self);
+	#endif
+
   /* MONITORING CALLBACK */
 #ifdef USE_TASK_EVENT_LOGGING
   if (sd->mon && MON_CB(stream_readprepare)) {
@@ -360,11 +364,6 @@ void *LpelStreamRead( lpel_stream_desc_t *sd)
   }
 #endif  /** _USE_BOUNDED_BUFFER */
 
-
-
-#ifdef _USE_UNBOUNDED_BUFFER_
-  LpelTaskCheckYield(self);
-#endif
 
   /* MONITORING CALLBACK */
 #ifdef USE_TASK_EVENT_LOGGING

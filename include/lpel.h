@@ -22,7 +22,6 @@
 
 
 
-
 /******************************************************************************/
 /*  GENERAL CONFIGURATION AND SETUP                                           */
 /******************************************************************************/
@@ -109,6 +108,10 @@ typedef struct {
 #define LPEL_MAP_OTHERS		 -1
 #define LPEL_MAP_SOSI			 -2
 
+/* TYPE OF TASK */
+/* for scheduling */
+#define LPEL_ENTRY_TASK 13
+#define LPEL_EXIT_TASK 113
 
 
 #define LPEL_FLAG_NONE           (0)
@@ -200,7 +203,7 @@ void LpelTaskExit(void *outarg);
 void LpelTaskYield(void);
 
 void LpelTaskSetPriorFunc(int func);
-
+void LpelTaskSetType(lpel_task_t *t, int type);
 /******************************************************************************/
 /*  STREAM FUNCTIONS                                                          */
 /******************************************************************************/

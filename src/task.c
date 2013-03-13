@@ -313,7 +313,7 @@ void LpelTaskCheckYield(lpel_task_t *t) {
 		return;
 	}
 
-	if (t->sched_info.rec_cnt > t->sched_info.rec_limit) {
+	if (t->sched_info.rec_cnt == t->sched_info.rec_limit) {
 		t->state = TASK_READY;
 		TaskStop( t);
 		LpelWorkerTaskYield(t);
@@ -400,8 +400,15 @@ int countRec(stream_elem_t *list) {
 
 
 double LpelTaskCalPrior(lpel_task_t *t) {
-	int in = countRec(t->sched_info.in_streams);
-	int out = countRec(t->sched_info.out_streams);
+	int in, out;
+	if (t->sched_info.type == LPEL_ENTRY_TASK)
+		in = -1;
+	else
+		in = countRec(t->sched_info.in_streams);
+	if (t->sched_info.type == LPEL_EXIT_TASK)
+		out = -1;
+	else
+		out = countRec(t->sched_info.out_streams);
 	return prior_cal(in, out);
 //	return (in + 1.0)/((out + 1.0)*(in + out + 1.0));
 
@@ -444,4 +451,6 @@ int LpelTaskGetWorkerId(lpel_task_t *t) {
 		return -1;
 }
 
-
+void LpelTaskSetType(lpel_task_t *t, int type) {
+	t->sched_info.type = type;
+}
