@@ -26,31 +26,29 @@
 /*  GENERAL CONFIGURATION AND SETUP                                           */
 /******************************************************************************/
 
-enum lpel_taskstate_t {
-  TASK_CREATED = 'C',
-  TASK_INQUEUE = 'Q',
-//  TASK_ASSIGNED = 'S',
-  TASK_RUNNING = 'U',
-  TASK_RETURNED = 'T',
-  TASK_READY   = 'R',
-  TASK_BLOCKED = 'B',
-  TASK_MUTEX   = 'X',
-  TASK_ZOMBIE  = 'Z'
-};
+
+#define  TASK_CREATED             'C'
+#define  TASK_INQUEUE							'Q'
+#define  TASK_RETURNED						'T'
+#define  TASK_RUNNING             'U'
+#define  TASK_READY               'R'
+#define  TASK_BLOCKED             'B'
+#define  TASK_MUTEX               'X'
+#define  TASK_ZOMBIE              'Z'
 
 
 typedef struct mon_worker_t mon_worker_t;
 typedef struct mon_task_t   mon_task_t;
 typedef struct mon_stream_t mon_stream_t;
-typedef enum lpel_taskstate_t lpel_taskstate_t;
+typedef char lpel_taskstate_t;
 
 typedef struct lpel_monitoring_cb_t {
   /* worker callbacks*/
   mon_worker_t *(*worker_create)(int);
   mon_worker_t *(*worker_create_wrapper)(mon_task_t *);
   void (*worker_destroy)(mon_worker_t*);
-  void (*worker_tskreq)(mon_worker_t*);
-  void (*worker_tskass)(mon_worker_t*);
+  void (*worker_waitstart)(mon_worker_t*);
+  void (*worker_waitstop)(mon_worker_t*);
 
 
 
@@ -61,7 +59,7 @@ typedef struct lpel_monitoring_cb_t {
   void (*task_destroy)(mon_task_t*);
   void (*task_assign)(mon_task_t*, mon_worker_t*);
   void (*task_start)(mon_task_t*);
-  void (*task_stop)(mon_task_t*, enum lpel_taskstate_t);
+  void (*task_stop)(mon_task_t*, lpel_taskstate_t);
 
   /* stream callbacks */
   mon_stream_t *(*stream_open)(mon_task_t*, unsigned int, char);
@@ -104,9 +102,8 @@ typedef struct {
 /******************************************************************************/
 /*  LPEL MAP ID (logical cpu id)											                        */
 /******************************************************************************/
-#define LPEL_MAP_MASTER 		0
 #define LPEL_MAP_OTHERS		 -1
-#define LPEL_MAP_SOSI			 -2
+#define LPEL_MAP_MASTER		 0
 
 /* TYPE OF TASK */
 /* for scheduling */
@@ -117,7 +114,6 @@ typedef struct {
 #define LPEL_FLAG_NONE           (0)
 #define LPEL_FLAG_PINNED      (1<<0)
 #define LPEL_FLAG_EXCLUSIVE   (1<<1)
-#define LPEL_FLAG_SOSI				(1<<2)
 
 
 
@@ -184,7 +180,6 @@ lpel_task_t *LpelTaskCreate( int worker, lpel_taskfunc_t func,
 /** monitor a task */
 void LpelTaskMonitor(lpel_task_t *t, mon_task_t *mt);
 
-//void LpelTaskPrio(lpel_task_t *t, int prio);
 
 unsigned int LpelTaskGetId( lpel_task_t *t );
 

@@ -44,7 +44,7 @@ struct lpel_task_t {
   /** intrinsic pointers for organizing tasks in a list*/
   struct lpel_task_t *prev, *next;
   unsigned int uid;    /** unique identifier */
-  enum lpel_taskstate_t state;   /** state */
+  lpel_taskstate_t state;   /** state */
 
   struct workerctx_t *worker_context;  /** worker context for this task */
 

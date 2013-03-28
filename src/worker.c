@@ -190,8 +190,8 @@ static void requestTask( workerctx_t *wc) {
 	msg.body.from_worker = wc->wid;
 	LpelMailboxSend(MASTER_PTR->mailbox, &msg);
 #ifdef USE_LOGGING
-	if (wc->mon && MON_CB(worker_tskreq)) {
-		MON_CB(worker_tskreq)(wc->mon);
+	if (wc->mon && MON_CB(worker_waitstart)) {
+		MON_CB(worker_waitstart)(wc->mon);
 	}
 #endif
 }
@@ -544,8 +544,8 @@ static void WorkerLoop( workerctx_t *wc)
   	  	wc->current_task = t;
 
 #ifdef USE_LOGGING
-  	  	if (wc->mon && MON_CB(worker_tskass)) {
-  	  		MON_CB(worker_tskass)(wc->mon);
+  	  	if (wc->mon && MON_CB(worker_waitstop)) {
+  	  		MON_CB(worker_waitstop)(wc->mon);
   	  	}
   	  	if (t->mon && MON_CB(task_assign)) {
   	  		MON_CB(task_assign)(t->mon, wc->mon);
@@ -648,8 +648,8 @@ void LpelWorkerTaskBlock(lpel_task_t *t){
 	if (wc->wid < 0) {	//wrapper
 			wc->wraptask = NULL;
 #ifdef USE_LOGGING
-			if (wc->mon && MON_CB(worker_tskreq)) {
-				MON_CB(worker_tskreq)(wc->mon);
+			if (wc->mon && MON_CB(worker_waitstart)) {
+				MON_CB(worker_waitstart)(wc->mon);
 			}
 #endif
 	} else {

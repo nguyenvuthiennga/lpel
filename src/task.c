@@ -61,7 +61,7 @@ lpel_task_t *LpelTaskCreate( int map, lpel_taskfunc_t func,
 	t->size = size;
 
 
-	if (map != LPEL_MAP_MASTER )	/** others wrapper or source/sink */
+	if (map == LPEL_MAP_OTHERS )	/** others wrapper or source/sink */
 		t->worker_context = LpelCreateWrapperContext(map);
 	else
 		t->worker_context = NULL;

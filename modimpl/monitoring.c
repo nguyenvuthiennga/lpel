@@ -661,8 +661,8 @@ void LpelMonInit(lpel_monitoring_cb_t *cb)
   cb->worker_create         = MonCbWorkerCreate;
   cb->worker_create_wrapper = MonCbWrapperCreate;
   cb->worker_destroy        = MonCbWorkerDestroy;
-  cb->worker_tskass 	     = MonCbWorkerTskAss;
-  cb->worker_tskreq   	    = MonCbWorkerTskReq;
+  cb->worker_waitstop 	     = MonCbWorkerTskAss;
+  cb->worker_waitstart   	    = MonCbWorkerTskReq;
   //cb->worker_debug          = MonCbDebug;
   cb->task_destroy = MonCbTaskDestroy;
   cb->task_assign  = MonCbTaskAssign;
