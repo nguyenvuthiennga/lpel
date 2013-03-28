@@ -123,7 +123,7 @@ static void CreateTask(int id)
   // i = (id < RING_SIZE/2) ? 0 : 1;
 
   t = LpelTaskCreate( i, Process, &ids[id], STACK_SIZE);
-  LpelTaskRun( t );
+  LpelTaskStart( t );
 }
 
 

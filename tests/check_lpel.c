@@ -47,9 +47,9 @@ static void testBasic(void)
   t3 = LpelTaskCreate( 0, taskFunc, &arg3, 0);
   arg3 = t3;
 
-  LpelTaskRun(t1);
-  LpelTaskRun(t2);
-  LpelTaskRun(t3);
+  LpelTaskStart(t1);
+  LpelTaskStart(t2);
+  LpelTaskStart(t3);
 
   LpelStart();
   LpelCleanup();

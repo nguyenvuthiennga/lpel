@@ -50,16 +50,18 @@ workerctx_t *LpelWorkerSelf(void);
 lpel_task_t *LpelWorkerCurrentTask(void);
 
 void LpelWorkerTaskWakeup( lpel_task_t *whom);
-void LpelWorkerTaskExit(lpel_task_t *t);
-void LpelWorkerTaskYield(lpel_task_t *t);
+void LpelWorkerSelfTaskExit(lpel_task_t *t);
+void LpelWorkerSelfTaskYield(lpel_task_t *t);
 void LpelWorkerTaskBlock(lpel_task_t *t);
 
 void LpelWorkerBroadcast(workermsg_t *msg);
 
-void LpelMasterInit( int size);
-void LpelMasterCleanup( void);
-void LpelMasterSpawn( void);
-void LpelMasterTerminate(void);
-void LpelStartTask( lpel_task_t *t);
+void LpelWorkersInit( int size);
+void LpelWorkersCleanup( void);
+void LpelWorkersSpawn( void);
+void LpelWorkersTerminate(void);
+void LpelWorkerRunTask( lpel_task_t *t);
+
+void LpelWorkerDispatcher( lpel_task_t *t);
 
 #endif /* _WORKER_H_ */

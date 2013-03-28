@@ -82,8 +82,6 @@ void LpelTaskUnblock( lpel_task_t *t);
  */
 void LpelTaskCheckYield(lpel_task_t *t);
 
-void LpelTaskSetPrior(lpel_task_t *t, double p);
-
 void LpelTaskAddStream( lpel_task_t *t, lpel_stream_desc_t *des, char mode);
 void LpelTaskRemoveStream( lpel_task_t *t, lpel_stream_desc_t *des, char mode);
 double LpelTaskCalPrior(lpel_task_t *t);

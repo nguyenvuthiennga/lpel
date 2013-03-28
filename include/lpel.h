@@ -194,7 +194,7 @@ int LpelTaskGetWorkerId(lpel_task_t *t);
 mon_task_t *LpelTaskGetMon( lpel_task_t *t );
 
 /** let the previously created task run */
-void LpelTaskRun( lpel_task_t *t );
+void LpelTaskStart( lpel_task_t *t );
 
 
 /** to be called from within a task: */

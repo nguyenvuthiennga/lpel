@@ -147,11 +147,11 @@ void LpelTaskMonitor(lpel_task_t *t, mon_task_t *mt)
 /**
  * Let the task run on the worker
  */
-void LpelTaskRun( lpel_task_t *t)
+void LpelTaskStart( lpel_task_t *t)
 {
 	assert( t->state == TASK_CREATED );
 
-	LpelStartTask( t);
+	LpelWorkerRunTask( t);
 }
 
 
@@ -183,7 +183,7 @@ void LpelTaskExit(void *outarg)
 	/* context switch happens, this task is cleaned up then */
 	ct->state = TASK_ZOMBIE;
 	TaskStop( ct);
-	LpelWorkerTaskExit(ct);
+	LpelWorkerSelfTaskExit(ct);
 	/* execution never comes back here */
 	assert(0);
 }
@@ -200,8 +200,9 @@ void LpelTaskYield(void)
 	assert( ct->state == TASK_RUNNING );
 
 	ct->state = TASK_READY;
+	LpelWorkerSelfTaskYield(ct);
 	TaskStop( ct);
-	LpelWorkerTaskYield(ct);
+	LpelWorkerDispatcher(ct);
 	TaskStart( ct);
 }
 
@@ -265,8 +266,9 @@ static void TaskStartup( void *data)
 
 	/* if task function returns, exit properly */
 	t->state = TASK_ZOMBIE;
+	LpelWorkerSelfTaskExit(t);
 	TaskStop(t);
-	LpelWorkerTaskExit(t);
+	LpelWorkerDispatcher(t);
 	/* execution never comes back here */
 	assert(0);
 }
@@ -316,7 +318,7 @@ void LpelTaskCheckYield(lpel_task_t *t) {
 	if (t->sched_info.rec_cnt == t->sched_info.rec_limit) {
 		t->state = TASK_READY;
 		TaskStop( t);
-		LpelWorkerTaskYield(t);
+		LpelWorkerSelfTaskYield(t);
 		TaskStart( t);
 	}
 	t->sched_info.rec_cnt ++;

@@ -46,7 +46,7 @@ static pthread_key_t workerctx_key;
 static pthread_key_t masterctx_key;
 #endif /* HAVE___THREAD */
 
-void LpelMasterInit( int size) {
+void LpelWorkersInit( int size) {
 
 	int i;
 	assert(0 <= size);
@@ -101,7 +101,7 @@ void LpelMasterInit( int size) {
 }
 
 // clean up for both worker and master
-void LpelMasterCleanup( void) {
+void LpelWorkersCleanup( void) {
 	int i;
 	workerctx_t *wc;
 
@@ -141,7 +141,7 @@ void LpelMasterCleanup( void) {
 }
 
 
-void LpelMasterSpawn( void) {
+void LpelWorkersSpawn( void) {
 	int i;
 	/* master */
 	(void) pthread_create( &master->thread, NULL, MasterThread, MASTER_PTR); 	/* spawn joinable thread */
@@ -154,14 +154,14 @@ void LpelMasterSpawn( void) {
 }
 
 
-void LpelMasterTerminate(void) {
+void LpelWorkersTerminate(void) {
 	workermsg_t msg;
 	msg.type = MSG_TERMINATE;
 	LpelMailboxSend(MASTER_PTR->mailbox, &msg);
 	LpelWorkerBroadcast(&msg);
 }
 
-void LpelStartTask( lpel_task_t *t) {
+void LpelWorkerRunTask( lpel_task_t *t) {
 	 workermsg_t msg;
    msg.type = MSG_TASKASSIGN;
 	 msg.body.task = t;
@@ -557,8 +557,9 @@ static void WorkerLoop( workerctx_t *wc)
   	  	if (t->state != TASK_ZOMBIE) {
   	  		t->worker_context = NULL;
   	  		returnTask(t);
-  	  	} else
-  	  		LpelTaskDestroy(t);		// if task finish, destroy it and not return to master
+  	  	} else {
+  	  		LpelTaskDestroy(t);
+  	  	}
   	  	break;
   	  case MSG_TERMINATE:
   	  	wc->terminate = 1;
@@ -632,16 +633,13 @@ lpel_task_t *LpelWorkerCurrentTask(void)
  * TASK RELATED FUNCTIONS
  ******************************************/
 
-void LpelWorkerTaskExit(lpel_task_t *t) {
+void LpelWorkerSelfTaskExit(lpel_task_t *t) {
 	workerctx_t *wc = t->worker_context;
 	PRT_DBG("worker %d: task %d exit\n", wc->wid, t->uid);
 	if (wc->wid >= 0)
 		requestTask(wc);	// FIXME: should have requested before
 	else
 		wc->terminate = 1;		// wrapper: terminate
-
-	wc->current_task = NULL;
-	mctx_switch( &t->mctx, &wc->mctx);		// switch back to the worker
 }
 
 
@@ -663,7 +661,7 @@ void LpelWorkerTaskBlock(lpel_task_t *t){
 	mctx_switch( &t->mctx, &wc->mctx);		// switch back to the worker/wrapper
 }
 
-void LpelWorkerTaskYield(lpel_task_t *t){
+void LpelWorkerSelfTaskYield(lpel_task_t *t){
 	workerctx_t *wc = t->worker_context;
 	if (wc->wid < 0) {	//wrapper
 			wc->wraptask = t;
@@ -674,8 +672,6 @@ void LpelWorkerTaskYield(lpel_task_t *t){
 		requestTask(wc);
 		PRT_DBG("worker %d: return task %d\n", wc->wid, t->uid);
 	}
-	wc->current_task = NULL;
-	mctx_switch( &t->mctx, &wc->mctx);		// switch back to the worker/wrapper
 }
 
 void LpelWorkerTaskWakeup( lpel_task_t *t) {
@@ -690,3 +686,10 @@ void LpelWorkerTaskWakeup( lpel_task_t *t) {
 			sendWakeup(MASTER_PTR->mailbox, t);
 	}
 }
+
+void LpelWorkerDispatcher( lpel_task_t *t) {
+	workerctx_t *wc = t->worker_context;
+	wc->current_task = NULL;
+	mctx_switch( &t->mctx, &wc->mctx);
+}
+
