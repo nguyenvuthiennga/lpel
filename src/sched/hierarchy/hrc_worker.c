@@ -106,8 +106,6 @@ void LpelWorkersInit( int size) {
 
 	/* mailbox */
 	wc->mailbox = LpelMailboxCreate();
-	wc->free_sd = NULL;
-	wc->free_stream = NULL;
 	}
 }
 
@@ -138,10 +136,7 @@ void LpelWorkersCleanup( void) {
 	/* cleanup the data structures */
 	for( i=0; i<num_workers; i++) {
 		wc = WORKER_PTR(i);
-		CleanupTaskContext(wc, NULL);
 		LpelMailboxDestroy(wc->mailbox);
-		LpelWorkerDestroyStream(wc);
-		LpelWorkerDestroySd(wc);
 		free(wc);
 	}
 
@@ -212,11 +207,6 @@ static void cleanupMasterMb() {
 		switch(msg.type) {
 		case WORKER_MSG_REQUEST:
 			break;
-		case WORKER_MSG_RETURN:
-			t = msg.body.task;
-			assert(t->state == TASK_ZOMBIE);
-			LpelTaskDestroy(t);
-			break;
 		default:
 			assert(0);
 			break;
@@ -267,7 +257,7 @@ static void sendWakeup( mailbox_t *mb, lpel_task_t *t)
  ******************************************************************************/
 static int servePendingReq( lpel_task_t *t) {
 	int i;
-	t->sched_info->prior = LpelTaskCalPriority(t);
+	t->sched_info.prior = LpelTaskCalPriority(t);
 	for (i = 0; i < num_workers; i++){
 		if (waitworkers[i] == 1) {
 			waitworkers[i] = 0;
@@ -301,8 +291,8 @@ static void updatePriorityList(taskqueue_t *tq, stream_elem_t *list, char mode) 
  * @cond: called only by master to avoid concurrent access
  */
 static void updatePriorityNeigh( taskqueue_t *tq, lpel_task_t *t) {
-	updatePriorityList(tq, t->sched_info->in_streams, 'r');
-	updatePriorityList(tq, t->sched_info->out_streams, 'w');
+	updatePriorityList(tq, t->sched_info.in_streams, 'r');
+	updatePriorityList(tq, t->sched_info.out_streams, 'w');
 }
 
 
@@ -323,7 +313,7 @@ static void MasterLoop( void)
 			t->state = TASK_READY;
 			PRT_DBG("master: get task %d\n", t->uid);
 			if (servePendingReq(t) < 0) {		// no pending request
-				t->sched_info->prior = LpelTaskCalPriority(t);	//update new prior before add to the queue
+				t->sched_info.prior = LpelTaskCalPriority(t);	//update new prior before add to the queue
 				t->state = TASK_INQUEUE;
 				LpelTaskqueuePush(MASTER_PTR->ready_tasks, t);
 			}
@@ -341,15 +331,12 @@ static void MasterLoop( void)
 			case TASK_READY:	// task yields
 				if (servePendingReq(t) < 0) {		// no pending request
 					updatePriorityNeigh(MASTER_PTR->ready_tasks, t);
-					t->sched_info->prior = LpelTaskCalPriority(t);	//update new prior before add to the queue
+					t->sched_info.prior = LpelTaskCalPriority(t);	//update new prior before add to the queue
 					t->state = TASK_INQUEUE;
 					LpelTaskqueuePush(MASTER_PTR->ready_tasks, t);
 				}
 				break;
 
-			case TASK_ZOMBIE:
-				updatePriorityNeigh(MASTER_PTR->ready_tasks, t);	//update neighbor before destroying task
-				break;
 			default:
 				assert(0);
 				break;
@@ -367,7 +354,7 @@ static void MasterLoop( void)
 			assert (t->state == TASK_RETURNED);
 			t->state = TASK_READY;
 			if (servePendingReq(t) < 0) {		// no pending request
-					t->sched_info->prior = LpelTaskCalPriority(t);	//update new prior before add to the queue
+					t->sched_info.prior = LpelTaskCalPriority(t);	//update new prior before add to the queue
 					t->state = TASK_INQUEUE;
 					LpelTaskqueuePush(MASTER_PTR->ready_tasks, t);
 			}
@@ -437,17 +424,17 @@ static void *MasterThread( void *arg)
  * WRAPPER FUNCTION
  ******************************************************************************/
 
+
 static void WrapperLoop( workerctx_t *wp)
 {
 	lpel_task_t *t = NULL;
 	workermsg_t msg;
 
 	do {
-		t = wp->current_task;
+		t = wp->wraptask;
 		if (t != NULL) {
 			/* execute task */
 			wp->current_task = t;
-			PRT_DBG("wrapper: switch to task %d\n", t->uid);
 			mctx_switch(&wp->mctx, &t->mctx);
 		} else {
 			/* no ready tasks */
@@ -458,7 +445,7 @@ static void WrapperLoop( workerctx_t *wp)
 				PRT_DBG("wrapper: get task %d\n", t->uid);
 				assert(t->state == TASK_CREATED);
 				t->state = TASK_READY;
-				wp->current_task = t;
+				wp->wraptask = t;
 #ifdef USE_LOGGING
 				if (t->mon) {
 					if (MON_CB(worker_create_wrapper)) {
@@ -478,7 +465,12 @@ static void WrapperLoop( workerctx_t *wp)
 				PRT_DBG("wrapper: unblock task %d\n", t->uid);
 				assert (t->state == TASK_BLOCKED);
 				t->state = TASK_READY;
-				wp->current_task = t;
+				wp->wraptask = t;
+#ifdef USE_LOGGING
+				if (t->mon && MON_CB(task_assign)) {
+					MON_CB(task_assign)(t->mon, wp->mon);
+				}
+#endif
 				break;
 			default:
 				assert(0);
@@ -486,12 +478,9 @@ static void WrapperLoop( workerctx_t *wp)
 			}
 		}
 	} while ( !wp->terminate);
-
-	if(t)
-		LpelTaskDestroy(t);
+	LpelTaskDestroy(wp->wraptask);
 	/* cleanup task context marked for deletion */
 }
-
 
 static void *WrapperThread( void *arg)
 {
@@ -514,8 +503,6 @@ static void *WrapperThread( void *arg)
 	WrapperLoop( wp);
 
 	LpelMailboxDestroy(wp->mailbox);
-	LpelWorkerDestroyStream(wp);
-	LpelWorkerDestroySd(wp);
 	free( wp);
 
 #ifdef USE_MCTX_PCL
@@ -529,11 +516,9 @@ workerctx_t *LpelCreateWrapperContext(int wid) {
 	wp->wid = wid;
 	wp->terminate = 0;
 	/* Wrapper is excluded from scheduling module */
-	wp->current_task = NULL;
+	wp->wraptask = NULL;
 	wp->current_task = NULL;
 	wp->mon = NULL;
-	wp->free_sd = NULL;
-	wp->free_stream = NULL;
 	//wp->marked_del = NULL;
 
 	/* mailbox */
@@ -556,24 +541,6 @@ int LpelWorkerCount(void)
 /*******************************************************************************
  * WORKER FUNCTION
  ******************************************************************************/
-/**
- * Deferred deletion of a task
- */
-
-static void CleanupTaskContext(workerctx_t *wc, lpel_task_t *t)
-{
-  /* delete task marked before */
-  if (wc->marked_del != NULL) {
-    //LpelMonDebug( wc->mon, "Destroy task %d\n", wc->marked_del->uid);
-    LpelTaskDestroy( wc->marked_del);
-  }
-  /* place a new task (if any) */
-  if (t != NULL) {
-    wc->marked_del = t;
-  } else
-  	wc->marked_del = NULL;
-}
-
 
 void LpelWorkerBroadcast(workermsg_t *msg)
 {
@@ -619,13 +586,11 @@ static void WorkerLoop( workerctx_t *wc)
   	  	mctx_switch(&wc->mctx, &t->mctx);
   	  	//task return here
   	  	assert(t->state != TASK_RUNNING);
-  	  	t->worker_context = NULL;
-  	  	returnTask(t);
-  	  	if (t->state == TASK_ZOMBIE)
-  	  		CleanupTaskContext(wc, t);
-
-  	  	PRT_DBG("worker %d: return task %d, state %c\n", wc->wid, t->uid, t->state);
-
+  	  	if (t->state != TASK_ZOMBIE) {
+  	  		t->worker_context = NULL;
+  	  		returnTask(t);
+  	  	} else
+  	  		LpelTaskDestroy(t);		// if task finish, destroy it and not return to master
   	  	break;
   	  case WORKER_MSG_TERMINATE:
   	  	wc->terminate = 1;
@@ -697,31 +662,49 @@ lpel_task_t *LpelWorkerCurrentTask(void)
 }
 
 
-
 /******************************************
  * TASK RELATED FUNCTIONS
  ******************************************/
 
-void LpelWorkerSelfTaskExit(lpel_task_t *t) {
+void LpelWorkerTaskExit(lpel_task_t *t) {
 	workerctx_t *wc = t->worker_context;
 	PRT_DBG("worker %d: task %d exit\n", wc->wid, t->uid);
 	if (wc->wid >= 0)
 		requestTask(wc);	// FIXME: should have requested before
 	else
 		wc->terminate = 1;		// wrapper: terminate
+
+	wc->current_task = NULL;
+	mctx_switch( &t->mctx, &wc->mctx);		// switch back to the worker
 }
 
 
-void LpelWorkerSelfTaskYield(lpel_task_t *t){
+void LpelWorkerTaskBlock(lpel_task_t *t){
 	workerctx_t *wc = t->worker_context;
 	if (wc->wid < 0) {	//wrapper
-			wc->current_task = t;
-			PRT_DBG("wrapper: task %d yields\n", t->uid);
+			wc->wraptask = NULL;
+	} else {
+		PRT_DBG("worker %d: block task %d\n", wc->wid, t->uid);
+		//sendUpdatePrior(t);		//update prior for neighbor
+		requestTask(wc);
+	}
+	wc->current_task = NULL;
+	mctx_switch( &t->mctx, &wc->mctx);		// switch back to the worker/wrapper
+}
+
+void LpelWorkerTaskYield(lpel_task_t *t){
+	workerctx_t *wc = t->worker_context;
+	if (wc->wid < 0) {	//wrapper
+			wc->wraptask = t;
+			PRT_DBG("wrapper: task %d yields\n");
 	}
 	else {
 		//sendUpdatePrior(t);		//update prior for neighbor
 		requestTask(wc);
+		PRT_DBG("worker %d: return task %d\n", wc->wid, t->uid);
 	}
+	wc->current_task = NULL;
+	mctx_switch( &t->mctx, &wc->mctx);		// switch back to the worker/wrapper
 }
 
 void LpelWorkerTaskWakeup( lpel_task_t *t) {
@@ -737,104 +720,3 @@ void LpelWorkerTaskWakeup( lpel_task_t *t) {
 	}
 }
 
-void LpelWorkerTaskBlock(lpel_task_t *t) {
-	workerctx_t *wc = t->worker_context;
-	if (wc->wid >= 0) // worker
-		requestTask(wc);
-}
-
-void LpelWorkerDispatcher( lpel_task_t *t) {
-	workerctx_t *wc = t->worker_context;
-	wc->current_task = NULL;
-	mctx_switch( &t->mctx, &wc->mctx);
-}
-
-int LpelWorkerIsWrapper(workerctx_t *wc) {
-	assert(wc != NULL);
-	return (wc->wid < 0? 1 : 0);
-}
-
-
-
-/******************************************
- * STREAM RELATED FUNCTIONS
- ******************************************/
-void LpelWorkerPutStream(workerctx_t *wc, lpel_stream_t *s) {
-	if (wc->free_stream == NULL) {
-		wc->free_stream = s;
-		s->next = NULL;
-	} else {
-		s->next = wc->free_stream;
-		wc->free_stream = s;
-	}
-}
-
-lpel_stream_t *LpelWorkerGetStream() {
-	lpel_stream_t *t;
-	workerctx_t *wc = LpelWorkerSelf();
-	if (wc == NULL) {
-		return NULL;
-	}
-
-	t = wc->free_stream;
-	if (t) {
-		wc->free_stream = t->next;
-		t->next = NULL;
-		assert(t->cons_sd == NULL && t->prod_sd == NULL);
-	}
-	return t;
-}
-
-void LpelWorkerPutSd(workerctx_t *wc, lpel_stream_desc_t *sd) {
-	if (wc->free_sd == NULL) {
-		wc->free_sd = sd;
-		sd->next = NULL;
-	} else {
-		sd->next = wc->free_sd;
-		wc->free_sd = sd;
-	}
-}
-
-lpel_stream_desc_t *LpelWorkerGetSd(workerctx_t *wc) {
-	lpel_stream_desc_t *t = wc->free_sd;
-	if (t != NULL) {
-		if (t->task == NULL && t->stream == NULL) {
-			wc->free_sd = t->next;
-			t->next = NULL;
-			return t;
-		} else {
-			lpel_stream_desc_t *prev = t;
-			t = t->next;
-			while (t != NULL) {
-				if (t->task == NULL && t->stream == NULL) {
-					prev->next = t->next;
-					t->next = NULL;
-					return t;
-				}
-				prev = t;
-				t = t->next;
-			}
-		}
-	}
-	return NULL;
-}
-
-void LpelWorkerDestroyStream(workerctx_t *wc) {
-	lpel_stream_t *head = wc->free_stream;
-	lpel_stream_t *t;
-	while (head != NULL) {
-		t = head->next;
-		LpelStreamDestroy(head);
-		head = t;
-	}
-}
-
-void LpelWorkerDestroySd(workerctx_t *wc) {
-	lpel_stream_desc_t *head = wc->free_sd;
-	lpel_stream_desc_t *t;
-	while (head != NULL) {
-		t = head->next;
-		free(head);
-		head = t;
-	}
-}
