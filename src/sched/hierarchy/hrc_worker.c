@@ -431,10 +431,9 @@ static void WrapperLoop( workerctx_t *wp)
 	workermsg_t msg;
 
 	do {
-		t = wp->wraptask;
+		t = wp->current_task;
 		if (t != NULL) {
 			/* execute task */
-			wp->current_task = t;
 			mctx_switch(&wp->mctx, &t->mctx);
 		} else {
 			/* no ready tasks */
@@ -445,7 +444,7 @@ static void WrapperLoop( workerctx_t *wp)
 				PRT_DBG("wrapper: get task %d\n", t->uid);
 				assert(t->state == TASK_CREATED);
 				t->state = TASK_READY;
-				wp->wraptask = t;
+				wp->current_task = t;
 #ifdef USE_LOGGING
 				if (t->mon) {
 					if (MON_CB(worker_create_wrapper)) {
@@ -465,7 +464,7 @@ static void WrapperLoop( workerctx_t *wp)
 				PRT_DBG("wrapper: unblock task %d\n", t->uid);
 				assert (t->state == TASK_BLOCKED);
 				t->state = TASK_READY;
-				wp->wraptask = t;
+				wp->current_task = t;
 #ifdef USE_LOGGING
 				if (t->mon && MON_CB(task_assign)) {
 					MON_CB(task_assign)(t->mon, wp->mon);
@@ -478,7 +477,7 @@ static void WrapperLoop( workerctx_t *wp)
 			}
 		}
 	} while ( !wp->terminate);
-	LpelTaskDestroy(wp->wraptask);
+	LpelTaskDestroy(wp->current_task);
 	/* cleanup task context marked for deletion */
 }
 
@@ -516,7 +515,6 @@ workerctx_t *LpelCreateWrapperContext(int wid) {
 	wp->wid = wid;
 	wp->terminate = 0;
 	/* Wrapper is excluded from scheduling module */
-	wp->wraptask = NULL;
 	wp->current_task = NULL;
 	wp->mon = NULL;
 	//wp->marked_del = NULL;
@@ -669,12 +667,13 @@ lpel_task_t *LpelWorkerCurrentTask(void)
 void LpelWorkerTaskExit(lpel_task_t *t) {
 	workerctx_t *wc = t->worker_context;
 	PRT_DBG("worker %d: task %d exit\n", wc->wid, t->uid);
-	if (wc->wid >= 0)
+	if (wc->wid >= 0) {
 		requestTask(wc);	// FIXME: should have requested before
+		wc->current_task = NULL;
+	}
 	else
 		wc->terminate = 1;		// wrapper: terminate
 
-	wc->current_task = NULL;
 	mctx_switch( &t->mctx, &wc->mctx);		// switch back to the worker
 }
 
@@ -682,7 +681,7 @@ void LpelWorkerTaskExit(lpel_task_t *t) {
 void LpelWorkerTaskBlock(lpel_task_t *t){
 	workerctx_t *wc = t->worker_context;
 	if (wc->wid < 0) {	//wrapper
-			wc->wraptask = NULL;
+			wc->current_task = NULL;
 	} else {
 		PRT_DBG("worker %d: block task %d\n", wc->wid, t->uid);
 		//sendUpdatePrior(t);		//update prior for neighbor
@@ -695,15 +694,14 @@ void LpelWorkerTaskBlock(lpel_task_t *t){
 void LpelWorkerTaskYield(lpel_task_t *t){
 	workerctx_t *wc = t->worker_context;
 	if (wc->wid < 0) {	//wrapper
-			wc->wraptask = t;
 			PRT_DBG("wrapper: task %d yields\n");
 	}
 	else {
 		//sendUpdatePrior(t);		//update prior for neighbor
 		requestTask(wc);
 		PRT_DBG("worker %d: return task %d\n", wc->wid, t->uid);
+		wc->current_task = NULL;
 	}
-	wc->current_task = NULL;
 	mctx_switch( &t->mctx, &wc->mctx);		// switch back to the worker/wrapper
 }
 
